@@ -44,7 +44,7 @@ int create_client_socket (int port, char* ipaddr, int bcast) {
 	l = sizeof(struct sockaddr_in);
 	bzero(&sock_clt, l);
 
-	if (bcast == 0)	 {
+	if (bcast == 0)	{
 		sock_clt.sin_family = AF_INET;
 		sock_clt.sin_port = htons(port);
 		sock_clt.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -149,13 +149,13 @@ uint16_t udp_checksum(const void *buff, size_t length) {
 }
 
 int main (int argc, char**argv) {
-	int fd, sfd, sfd2, bcast == -1, port, offset_number;
+	int fd, sfd, sfd2, bcast = -1, port, offset_number;
 	char buf[BUFSIZE];
 	off_t n;
 	unsigned int l = sizeof(struct sockaddr_in);
 	uint16_t checksum, data_len;
 
-	if (argc != 4 || argc!= 5) {
+	if (argc != 4 && argc!= 5) {
 		printf("Wrong number of arguments.\nUsage : %s <broadcast/multicast> <serv_address> <port_serv> [<multicast_addr>]\n", argv[0]);
 		return EXIT_FAILURE;
 	}
@@ -181,8 +181,11 @@ int main (int argc, char**argv) {
 	}
 	
 	port = atoi(argv[3]);
-	sfd = create_client_socket(port, bcast); 
-
+	if (bcast == 0)
+		sfd = create_client_socket(port, argv[4], bcast); 
+	else
+		sfd = create_client_socket(port, NULL, bcast); 
+	
 	//receive information about the file
 	bzero(&buf, BUFSIZE);
 	n = recvfrom(sfd, &buf, BUFSIZE, 0, (struct sockaddr *)&sock_clt, &l);
@@ -203,7 +206,7 @@ int main (int argc, char**argv) {
 	char *name = (char *)malloc((name_len + 1) * sizeof(char));
 	for (i = 0; i < name_len; i++)
 		name[i] = buf[i + 16];
-	name[name_len] = '\n';
+	name[name_len] = '\0';
 
 	//create the file
 	printf("Creating the output file : %s\nSize : %ld b\n", name, file_len);
@@ -233,7 +236,6 @@ int main (int argc, char**argv) {
 		memcpy(&data_len, &(buf[518]), 2);
 		if (checksum == udp_checksum(buf, (size_t)data_len)) {
 			memcpy(&offset_number, &(buf[512]), 4);
-			pieces[offset_number] = 1;
 			if (lseek(fd, offset_number * 512,SEEK_SET) == -1) {
 				perror("lseek");
 				CLEANUP;
@@ -298,7 +300,6 @@ int main (int argc, char**argv) {
 		printf("Stopping the server.\n");
 		n = sendto(sfd2, buf, 0, 0, (struct sockaddr*)&sendsock, l);
 	}
-	
 	
 	printf("Download finished\n");
 	CLEANUP2;

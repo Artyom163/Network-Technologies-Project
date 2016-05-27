@@ -17,6 +17,7 @@
 //512 for data, 4 for offset, 2 for checksum, 2 for length of data (512 or less)
 #define BUFSIZE 520
 #define MULTICAST_GROUP "239.0.0.1"
+#define MAXFILESIZE 11534336
 
 #define CLEANUP\
 	close((sfd));\
@@ -44,8 +45,8 @@ int create_server_socket (int port, char* ipaddr, int bcast)
 	bzero(&sock_serv, l);
 	
 	sock_serv.sin_family = AF_INET;
-	sock_serv.sin_port = htons(port);
-	sock_serv.sin_addr.s_addr = inet_addr(ipaddr);
+//	sock_serv.sin_port = htons(port+1);
+//	sock_serv.sin_addr.s_addr = inet_addr(ipaddr);
 
 	if (bcast == 1) {
 		if (setsockopt(sfd, SOL_SOCKET, SO_BROADCAST, &so_broadcast, sizeof(so_broadcast)) == -1) {
@@ -59,6 +60,8 @@ int create_server_socket (int port, char* ipaddr, int bcast)
 			exit(EXIT_FAILURE);
 		}
 	}
+	sock_serv.sin_port = htons(port);
+	sock_serv.sin_addr.s_addr = inet_addr(ipaddr);
 
 	return sfd;
 }
@@ -166,7 +169,7 @@ int main (int argc, char**argv) {
 	}
 	
 	//creating socket
-	sfd = create_server_socket(atoi(argv[3]), argv[5], bcast);
+	sfd = create_server_socket(atoi(argv[3]), argv[2], bcast);
 
 	//reading file
 	if ((fd = open(argv[4], O_RDONLY)) == -1) {
@@ -182,8 +185,14 @@ int main (int argc, char**argv) {
 		return EXIT_FAILURE;
 	}
 
+	if (buffer.st_size > MAXFILESIZE) {
+		printf("Error : file size is too big.\n");
+		CLEANUP;
+		return EXIT_FAILURE;
+	}
+
     	/*send info about the file
-	8 bytes for length of the file,
+	8 bytes for size of the file,
 	8 for length of the file name,
 	the rest is the file name*/
 
@@ -240,6 +249,7 @@ int main (int argc, char**argv) {
 		return EXIT_FAILURE;
 	}
 	
+	printf("Finished sending the file.\nWaiting for missing pieces requests.\n");
 	bzero(buf, BUFSIZE);
 	sfd2 = create_recv_socket(8081);
 	m = recvfrom(sfd2, &buf, BUFSIZE, 0, (struct sockaddr *)&recvsock, &l);
