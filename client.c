@@ -15,6 +15,7 @@
 //512 for data, 4 for offset, 2 for checksum, 2 for length of data (512 or less)
 #define BUFSIZE 520
 #define MULTICAST_GROUP "239.0.0.1"
+#define SLEEP_INTERVAL 100
 
 #define CLEANUP\
 	free((name));\
@@ -236,6 +237,8 @@ int main (int argc, char**argv) {
 		memcpy(&data_len, &(buf[518]), 2);
 		if (checksum == udp_checksum(buf, (size_t)data_len)) {
 			memcpy(&offset_number, &(buf[512]), 4);
+			if (offset_number != 23)
+				pieces[offset_number] = 1;
 			if (lseek(fd, offset_number * 512,SEEK_SET) == -1) {
 				perror("lseek");
 				CLEANUP;
@@ -255,6 +258,7 @@ int main (int argc, char**argv) {
 	for (i = 0; i < num_pieces; i++)
 		if (pieces[i] == 0) {
 			//send info about the missing piece
+			printf("Part #%d is missing. Redownloading.\n", i);
 			bzero(buf, BUFSIZE);
 			//create message
 			memcpy(buf, &i, 4);
@@ -267,14 +271,15 @@ int main (int argc, char**argv) {
 			//receive the piece
 			bzero(buf, BUFSIZE);
 
-			n = recvfrom(sfd2, &buf, BUFSIZE, 0, (struct sockaddr *)&recvsock, &l);
+			n = recvfrom(sfd2, &buf, BUFSIZE, 0, (struct sockaddr*)&recvsock, &l);
 			if (n == -1) {
 				perror("recvfrom");
 				CLEANUP2;
 				return EXIT_FAILURE;
 			}
+			usleep(SLEEP_INTERVAL);
 			//add the piece to the file
-			checksum = memcpy(&checksum, &(buf[516]), 2);
+			memcpy(&checksum, &(buf[516]), 2);
 			if (checksum == udp_checksum(buf, BUFSIZE - 8)) {
 				memcpy(&offset_number, &(buf[512]), 4);
 				pieces[offset_number] = 1;
@@ -293,7 +298,7 @@ int main (int argc, char**argv) {
 		}
 
 	bzero(buf, BUFSIZE);
-	printf("Download finished.\nPress 'n' if you don't want to stop the server.\nPress any other key to stop it.\n");
+	printf("Download finished.\nEnter 'n' if you don't want to stop the server.\nEnter any other key to stop it.\n");
 	char c;
 	scanf("%c", &c);
 	if (c != 'n') {

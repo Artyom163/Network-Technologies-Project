@@ -2,6 +2,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <netinet/in.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,6 +19,7 @@
 #define BUFSIZE 520
 #define MULTICAST_GROUP "239.0.0.1"
 #define MAXFILESIZE 11534336
+#define SLEEP_INTERVAL 100
 
 #define CLEANUP\
 	close((sfd));\
@@ -29,6 +31,7 @@
 	close((fd));
 
 struct sockaddr_in sock_serv, recvsock, sendsock;
+int sfd, sfd2, fd;
 
 int create_server_socket (int port, char* ipaddr, int bcast)
 {
@@ -140,8 +143,15 @@ uint16_t udp_checksum(const void *buff, size_t length)
 	return ((uint16_t)(~sum));
 }
 
+void sigint_handler(int s) {
+	printf("\nReceived SIGINT.\nShutting down.\n");
+	CLEANUP2;
+	exit(1);
+}
+
 int main (int argc, char**argv) {
-	int offset_number, sfd, sfd2, fd, missing_piece, bcast, i;
+	struct sigaction sigIntHandler;
+	int offset_number, missing_piece, bcast, i;
 	char buf[BUFSIZE];
 	off_t m;
 	uint16_t checksum, data_len;
@@ -231,7 +241,7 @@ int main (int argc, char**argv) {
 		memcpy(&(buf[512]), &offset_number, 4);
 		memcpy(&(buf[516]), &checksum, 2);
 		memcpy(&(buf[518]), &data_len, 2);
-
+		usleep(SLEEP_INTERVAL);
 		m = sendto(sfd, buf, BUFSIZE, 0, (struct sockaddr*)&sock_serv, l);
 		if (m == -1) {
 			perror("sendto");
@@ -249,9 +259,13 @@ int main (int argc, char**argv) {
 		return EXIT_FAILURE;
 	}
 	
-	printf("Finished sending the file.\nWaiting for missing pieces requests.\n");
 	bzero(buf, BUFSIZE);
 	sfd2 = create_recv_socket(8081);
+	sigIntHandler.sa_handler = sigint_handler;
+	sigemptyset(&sigIntHandler.sa_mask);
+	sigIntHandler.sa_flags = 0;
+	sigaction(SIGINT, &sigIntHandler, NULL);
+	printf("Finished sending the file.\nWaiting for missing pieces requests.\nPress ^C to shut the server down.\n");
 	m = recvfrom(sfd2, &buf, BUFSIZE, 0, (struct sockaddr *)&recvsock, &l);
 	while (m) {
 		if (m == -1) {
@@ -297,6 +311,6 @@ int main (int argc, char**argv) {
     
 	printf("File transfer completed successfully\n");
 
-	CLEANUP;
+	CLEANUP2;
 	return EXIT_SUCCESS;
 }
